@@ -54,12 +54,12 @@ func GetOneGame(ctx *gin.Context, db *db.Client, id string) {
 
 // Adds a new Game to the database
 // Error if the game already exists
-func AddGame(ctx *gin.Context, db *db.Client) {
+func AddGame(ctx *gin.Context, db *db.Client) *types.Game {
 	// Retrieving the game from the request body
 	var game types.Game
 	if err := ctx.ShouldBindJSON(&game); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+		return nil
 	}
 
 	// Declaring the inserting conditions for the document
@@ -67,67 +67,67 @@ func AddGame(ctx *gin.Context, db *db.Client) {
 		{Key: "title", Value: game.Title},
 	}
 
-	game.Date = time.Now().Format("2006-01-02 15:04:05")
+	game.Date = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	game.Version = 1
 
 	id, status, err := db.InsertDocument("games", insertingConditions, game)
 	if err != nil {
 		ctx.JSON(status, gin.H{"error": err.Error()})
-		return
+		return nil
 	}
 
 	// Checking if no ID was provided by the server
 	// In this case, the game already exists
 	if id == nil {
 		ctx.JSON(status, gin.H{"error": "Game already exists"})
-		return
+		return nil
 	}
 
 	game.ID = id.(primitive.ObjectID)
 
-	ctx.JSON(status, game)
+	return &game
 }
 
 // Deletes a game based on its ID
 // Error if the game does not exist
-func DeleteGame(ctx *gin.Context, db *db.Client, id string) {
+func DeleteGame(ctx *gin.Context, db *db.Client, id string) string {
 	// Converting the ID to an ObjectID
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+		return ""
 	}
 
 	status, err := db.DeleteDocument("games", &bson.D{{Key: "_id", Value: objectID}})
 	if err != nil {
 		ctx.JSON(status, gin.H{"error": err.Error()})
-		return
+		return ""
 	}
 
-	ctx.JSON(status, id)
+	return id
 }
 
 // Edits a game based on its ID
 // Error if the game does not exist
-func EditGame(ctx *gin.Context, db *db.Client) {
+func EditGame(ctx *gin.Context, db *db.Client) *types.Game {
 	// Retrieving the game from the request body
 	var game types.Game
 	if err := ctx.ShouldBindJSON(&game); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+		return nil
 	}
 
 	status, err := db.EditDocument("games", &bson.D{{Key: "_id", Value: game.ID}}, game)
 
 	if err != nil {
 		ctx.JSON(status, gin.H{"error": err.Error()})
-		return
+		return nil
 	}
 
-	game.Date = time.Now().Format("2006-01-02 15:04:05")
+	game.Date = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	game.Version++
 
-	ctx.JSON(status, game)
+	return &game
 }
 
 func Pong(ctx *gin.Context) {

@@ -10,7 +10,8 @@ type Game struct {
 	Title       string             `json:"title" bson:"title"`
 	ReleaseDate string             `json:"release_date" bson:"release_date"`
 	RentalPrice float64            `json:"rental_price" bson:"rental_price"`
-	Rented      bool               `json:"rented" bson:"rented"`
-	Date        string             `json:"date" bson:"creation_date"`
+	Rating      int                `json:"rating" bson:"rating"`
+	Category    string             `json:"category" bson:"category"`
+	Date        string             `json:"date" bson:"date"`
 	Version     int                `json:"version" bson:"version"`
 }
