@@ -32,7 +32,7 @@ type Client struct {
 
 // Queries a named collection in the database based on some conditions.
 // Returns a HTTP status code and an error.
-func (client *Client) QueryCollection(collectionName string, conditions *bson.D, results interface{}) (int, error) {
+func (client *Client) QueryCollection(collectionName string, conditions *bson.D, options *options.FindOptions, results interface{}) (int, error) {
 	// Accessing the collection
 	collection := client.dbClient.Database(client.envVars["DB_NAME"]).Collection(collectionName)
 	log.Printf("Accessed collection: %s", collection.Name())
@@ -42,7 +42,7 @@ func (client *Client) QueryCollection(collectionName string, conditions *bson.D,
 	}
 
 	// Querying the collection
-	cursor, err := collection.Find(context.Background(), conditions)
+	cursor, err := collection.Find(context.Background(), conditions, options)
 
 	if err != nil {
 		log.Printf("Error querying the collection: %s", err.Error())

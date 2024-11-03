@@ -1,4 +1,4 @@
-package api
+package gameapi
 
 import (
 	"net/http"
@@ -9,14 +9,56 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+type GamesHandler struct {
+	db *db.Client
+}
+
+func NewGamesHandler(db *db.Client) *GamesHandler {
+	return &GamesHandler{
+		db: db,
+	}
+}
+
 // Returns a list of all the games
-func GetGames(ctx *gin.Context, db *db.Client) {
+func (h *GamesHandler) GetGames(ctx *gin.Context) {
+	var gquery types.GamesQuery
+
+	if err := ctx.ShouldBindQuery(&gquery); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	filter := bson.D{}
+
+	if gquery.Username != "" {
+		filter = append(filter, bson.E{Key: "username", Value: gquery.Username})
+	}
+
+	if gquery.SearchFilter != "" {
+		filter = append(filter, bson.E{
+			Key: "title",
+			Value: bson.D{{
+				Key: "$regex",
+				Value: primitive.Regex{
+					Pattern: gquery.SearchFilter,
+					Options: "i",
+				},
+			}},
+		})
+	}
+
+	skip := uint32(gquery.Page-1) * gquery.ItemsPerPage
+	options := options.Find().
+		SetSkip(int64(skip)).
+		SetLimit(int64(gquery.ItemsPerPage))
+
 	var games []types.Game = make([]types.Game, 0)
 
 	// Querying the 'games' collection to retrieve all the documents
-	status, err := db.QueryCollection("games", nil, &games)
+	status, err := h.db.QueryCollection("games", &filter, options, &games)
 	if err != nil {
 		ctx.JSON(status, gin.H{"error": err.Error()})
 		return
@@ -26,7 +68,7 @@ func GetGames(ctx *gin.Context, db *db.Client) {
 }
 
 // Returns a game based on its ID
-func GetOneGame(ctx *gin.Context, db *db.Client, id string) {
+func (h *GamesHandler) GetOneGame(ctx *gin.Context, id string) {
 	var game []types.Game
 
 	// Converting the ID to an ObjectID
@@ -37,7 +79,7 @@ func GetOneGame(ctx *gin.Context, db *db.Client, id string) {
 	}
 
 	// Querying the 'games' collection to retrieve the document with the provided ID
-	status, err := db.QueryCollection("games", &bson.D{{Key: "_id", Value: objectID}}, &game)
+	status, err := h.db.QueryCollection("games", &bson.D{{Key: "_id", Value: objectID}}, nil, &game)
 	if err != nil {
 		ctx.JSON(status, gin.H{"error": err.Error()})
 		return
@@ -54,7 +96,7 @@ func GetOneGame(ctx *gin.Context, db *db.Client, id string) {
 
 // Adds a new Game to the database
 // Error if the game already exists
-func AddGame(ctx *gin.Context, db *db.Client) *types.Game {
+func (h *GamesHandler) AddGame(ctx *gin.Context) *types.Game {
 	// Retrieving the game from the request body
 	var game types.Game
 	if err := ctx.ShouldBindJSON(&game); err != nil {
@@ -70,7 +112,7 @@ func AddGame(ctx *gin.Context, db *db.Client) *types.Game {
 	game.Date = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	game.Version = 1
 
-	id, status, err := db.InsertDocument("games", insertingConditions, game)
+	id, status, err := h.db.InsertDocument("games", insertingConditions, game)
 	if err != nil {
 		ctx.JSON(status, gin.H{"error": err.Error()})
 		return nil
@@ -90,7 +132,7 @@ func AddGame(ctx *gin.Context, db *db.Client) *types.Game {
 
 // Deletes a game based on its ID
 // Error if the game does not exist
-func DeleteGame(ctx *gin.Context, db *db.Client, id string) string {
+func (h *GamesHandler) DeleteGame(ctx *gin.Context, id string) string {
 	// Converting the ID to an ObjectID
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
@@ -98,7 +140,7 @@ func DeleteGame(ctx *gin.Context, db *db.Client, id string) string {
 		return ""
 	}
 
-	status, err := db.DeleteDocument("games", &bson.D{{Key: "_id", Value: objectID}})
+	status, err := h.db.DeleteDocument("games", &bson.D{{Key: "_id", Value: objectID}})
 	if err != nil {
 		ctx.JSON(status, gin.H{"error": err.Error()})
 		return ""
@@ -109,7 +151,7 @@ func DeleteGame(ctx *gin.Context, db *db.Client, id string) string {
 
 // Edits a game based on its ID
 // Error if the game does not exist
-func EditGame(ctx *gin.Context, db *db.Client) *types.Game {
+func (h *GamesHandler) EditGame(ctx *gin.Context) *types.Game {
 	// Retrieving the game from the request body
 	var game types.Game
 	if err := ctx.ShouldBindJSON(&game); err != nil {
@@ -117,7 +159,7 @@ func EditGame(ctx *gin.Context, db *db.Client) *types.Game {
 		return nil
 	}
 
-	status, err := db.EditDocument("games", &bson.D{{Key: "_id", Value: game.ID}}, game)
+	status, err := h.db.EditDocument("games", &bson.D{{Key: "_id", Value: game.ID}}, game)
 
 	if err != nil {
 		ctx.JSON(status, gin.H{"error": err.Error()})
@@ -128,8 +170,4 @@ func EditGame(ctx *gin.Context, db *db.Client) *types.Game {
 	game.Version++
 
 	return &game
-}
-
-func Pong(ctx *gin.Context) {
-	ctx.JSON(http.StatusOK, gin.H{"message": "pong"})
 }
