@@ -7,6 +7,7 @@ import (
 // Game Struct
 type Game struct {
 	ID          primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
+	Username    string             `json:"username" bson:"username"`
 	Title       string             `json:"title" bson:"title"`
 	ReleaseDate string             `json:"release_date" bson:"release_date"`
 	RentalPrice float64            `json:"rental_price" bson:"rental_price"`
@@ -18,10 +19,9 @@ type Game struct {
 
 // GamesQuery Struct
 type GamesQuery struct {
-	Username     string `json:"username" bson:"username"`
-	Page         uint32 `json:"page" bson:"page"`
-	ItemsPerPage uint32 `json:"items_per_page" bson:"items_per_page"`
-	SearchFilter string `json:"search_filter" bson:"search_filter"`
+	Page  int64  `bson:"page"`
+	Limit int64  `bson:"limit"`
+	Title string `bson:"title"`
 }
 
 // User Struct
@@ -49,4 +49,11 @@ type RegisterRequest struct {
 // AuthResponse Struct
 type AuthResponse struct {
 	Token string `json:"token"`
+}
+
+// MessageData Struct
+type MessageData struct {
+	Type    string      `json:"type"`
+	Payload interface{} `json:"payload"`
+	Sender  string      `json:"sender"`
 }

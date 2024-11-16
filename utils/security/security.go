@@ -3,6 +3,7 @@ package security
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 
 	"golang.org/x/crypto/argon2"
@@ -11,6 +12,7 @@ import (
 const DEFAULT_TIME uint32 = 5
 const DEFAULT_MEMORY uint32 = 7 * 1024
 const DEFAULT_THREADS uint8 = 4
+const DEFAULT_KEY_LEN uint32 = 32
 const DEFAULT_SALT_LEN uint32 = 16
 
 type Argon2idHash struct {
@@ -57,8 +59,8 @@ func (a *Argon2idHash) GenerateHash(password, salt []byte) (*HashSalt, error) {
 		}
 	}
 
-	hash := argon2.IDKey([]byte(password), salt, a.time, a.memory, a.threads, a.keyLen)
-	return &HashSalt{Hash: hash, Salt: salt}, nil
+	hash := hex.EncodeToString(argon2.IDKey(password, salt, a.time, a.memory, a.threads, a.keyLen))
+	return &HashSalt{Hash: []byte(hash), Salt: salt}, nil
 }
 
 func (a *Argon2idHash) ComparePasswords(password, salt, hash []byte) error {

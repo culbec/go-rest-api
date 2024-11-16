@@ -14,9 +14,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const ENV_PATH = "./.env"
+const EnvPath = "./.env"
 
-// Interface specifying the methods for the client
+// ClientInterface Interface specifying the methods for the client
 type ClientInterface interface {
 	QueryCollection(collectionName string, conditions *bson.D) ([]interface{}, error)
 	InsertDocument(collectionName string, document []byte) (string, error)
@@ -30,9 +30,9 @@ type Client struct {
 	envVars  map[string]string
 }
 
-// Queries a named collection in the database based on some conditions.
-// Returns a HTTP status code and an error.
-func (client *Client) QueryCollection(collectionName string, conditions *bson.D, options *options.FindOptions, results interface{}) (int, error) {
+// QueryCollection Queries a named collection in the database based on some conditions.
+// Returns an HTTP status code and an error.
+func (client *Client) QueryCollection(collectionName string, conditions *bson.D, opts *options.FindOptions, results interface{}) (int, error) {
 	// Accessing the collection
 	collection := client.dbClient.Database(client.envVars["DB_NAME"]).Collection(collectionName)
 	log.Printf("Accessed collection: %s", collection.Name())
@@ -42,14 +42,19 @@ func (client *Client) QueryCollection(collectionName string, conditions *bson.D,
 	}
 
 	// Querying the collection
-	cursor, err := collection.Find(context.Background(), conditions, options)
+	cursor, err := collection.Find(context.Background(), conditions, opts)
 
 	if err != nil {
 		log.Printf("Error querying the collection: %s", err.Error())
 		return http.StatusInternalServerError, err
 	}
 
-	defer cursor.Close(context.Background())
+	defer func(cursor *mongo.Cursor, ctx context.Context) {
+		err := cursor.Close(ctx)
+		if err != nil {
+			log.Printf("Error closing the cursor: %s", err.Error())
+		}
+	}(cursor, context.Background())
 
 	// Decoding directly into a generic result
 	if err = cursor.All(context.Background(), results); err != nil {
@@ -67,7 +72,7 @@ func (client *Client) QueryCollection(collectionName string, conditions *bson.D,
 	return http.StatusOK, nil
 }
 
-// Inserts a new document into the named collection. The conditions parameter is used to check for uniqueness.
+// InsertDocument Inserts a new document into the named collection. The conditions parameter is used to check for uniqueness.
 // Returns the ID of the inserted document, HTTP status code, and an error
 func (client *Client) InsertDocument(collectionName string, conditions *bson.D, document interface{}) (interface{}, int, error) {
 	collection := client.dbClient.Database(client.envVars["DB_NAME"]).Collection(collectionName)
@@ -83,7 +88,12 @@ func (client *Client) InsertDocument(collectionName string, conditions *bson.D, 
 			return nil, http.StatusInternalServerError, err
 		}
 
-		defer cursor.Close(context.Background())
+		defer func(cursor *mongo.Cursor, ctx context.Context) {
+			err := cursor.Close(ctx)
+			if err != nil {
+				log.Printf("Error closing the cursor: %s", err.Error())
+			}
+		}(cursor, context.Background())
 
 		if cursor.Next(context.Background()) {
 			log.Printf("Document already exists in the collection!")
@@ -102,7 +112,7 @@ func (client *Client) InsertDocument(collectionName string, conditions *bson.D, 
 	return insertResult.InsertedID.(primitive.ObjectID), http.StatusCreated, nil
 }
 
-// Deletes a document from the named collection based on the conditions provided.
+// DeleteDocument Deletes a document from the named collection based on the conditions provided.
 // Returns the HTTP status code and an error.
 func (client *Client) DeleteDocument(collectionName string, conditions *bson.D) (int, error) {
 	collection := client.dbClient.Database(client.envVars["DB_NAME"]).Collection(collectionName)
@@ -124,7 +134,7 @@ func (client *Client) DeleteDocument(collectionName string, conditions *bson.D) 
 	return http.StatusOK, nil
 }
 
-// Replaces a document in the named collection based on the conditions provided.
+// EditDocument Replaces a document in the named collection based on the conditions provided.
 // Returns the HTTP status code and an error.
 func (client *Client) EditDocument(collectionName string, conditions *bson.D, document interface{}) (int, error) {
 	collection := client.dbClient.Database(client.envVars["DB_NAME"]).Collection(collectionName)
@@ -162,9 +172,9 @@ func readEnv(envPath string) (map[string]string, error) {
 	return envVars, nil
 }
 
-// Function to prepare the client connection
+// PrepareClient Function to prepare the client connection
 func PrepareClient() (*Client, error) {
-	envVars, err := readEnv(ENV_PATH)
+	envVars, err := readEnv(EnvPath)
 
 	if err != nil {
 		log.Printf("Error reading the environment variables: %s", err.Error())
@@ -174,11 +184,11 @@ func PrepareClient() (*Client, error) {
 	// Set the server API to stable version 1
 	serverAPIOptions := options.ServerAPI(options.ServerAPIVersion1)
 
-	// Initialize the client options
-	options := options.Client().ApplyURI(envVars["DB_URI"]).SetServerAPIOptions(serverAPIOptions)
+	// Initialize the client apiOptions
+	apiOptions := options.Client().ApplyURI(envVars["DB_URI"]).SetServerAPIOptions(serverAPIOptions)
 
 	// Creating a new client and connecting to the server
-	client, err := mongo.Connect(context.Background(), options)
+	client, err := mongo.Connect(context.Background(), apiOptions)
 
 	if err != nil {
 		log.Printf("Error connecting to the server: %s", err.Error())
@@ -198,7 +208,7 @@ func PrepareClient() (*Client, error) {
 	}, nil
 }
 
-// Function to cleanup the client connection
+// Cleanup Function to clean up the client connection
 func Cleanup(client *Client) {
 	if err := client.dbClient.Disconnect(context.Background()); err != nil {
 		log.Panicf("Error disconnecting from the server: %s", err.Error())

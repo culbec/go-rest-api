@@ -29,7 +29,13 @@ func (m *JWTManager) GenerateToken(username string) (string, error) {
 }
 
 func (m *JWTManager) ValidateToken(token string) (string, error) {
+	// Parse the token
 	parsedToken, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		// Check the signing method
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrInvalidKey
+		}
+
 		return m.secretKey, nil
 	})
 

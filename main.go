@@ -5,122 +5,35 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"sync"
-	"time"
+
+	"github.com/culbec/go-rest-api/utils/websockets"
 
 	authapi "github.com/culbec/go-rest-api/api/authApi"
 	gameapi "github.com/culbec/go-rest-api/api/gameApi"
 	"github.com/culbec/go-rest-api/db"
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 )
 
-const SERVER_HOST = "localhost"
-const SERVER_PORT = "3000"
+const ServerHost = "localhost"
+const ServerPort = "3000"
 
-type WSConfig struct {
-	auth        *authapi.AuthHandler
-	connections map[*websocket.Conn]string // conn: username
-	mutex       *sync.Mutex
-}
+func CORSMiddleware() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		ctx.Writer.Header().Set("Access-Control-Allow-Origin", "*") // Allow all origins temporarily
+		ctx.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		ctx.Writer.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Authorization, Access-Control-Allow-Origin")
+		ctx.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 
-type Message struct {
-	Type      string      `json:"type"`
-	Data      interface{} `json:"data"`
-	Sender    string      `json:"sender"`
-	Timestamp time.Time   `json:"timestamp"`
-}
-
-func NewWSConfig(auth *authapi.AuthHandler) *WSConfig {
-	return &WSConfig{
-		auth:        auth,
-		connections: make(map[*websocket.Conn]string),
-		mutex:       &sync.Mutex{},
-	}
-}
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true // all origins are allowed
-	},
-}
-
-func (wsc *WSConfig) handleWS(ctx *gin.Context) {
-	// Validate the token and retrieving the username
-	username, err := wsc.auth.ValidateToken(ctx)
-	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-		return
-	}
-
-	conn, err := upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
-	if err != nil {
-		log.Printf("Error upgrading the connection: %s", err.Error())
-		return
-	}
-
-	// Storing the connection
-	wsc.mutex.Lock()
-	wsc.connections[conn] = username
-	wsc.mutex.Unlock()
-
-	defer func() {
-		wsc.mutex.Lock()
-		defer wsc.mutex.Unlock()
-
-		conn.Close()
-		delete(wsc.connections, conn)
-	}()
-
-	for {
-		var message Message
-		if err := conn.ReadJSON(&message); err != nil {
-			log.Printf("Error reading the message: %s", err.Error())
-			break
+		if ctx.Request.Method == "OPTIONS" {
+			ctx.AbortWithStatus(204)
+			return
 		}
 
-		message.Sender = username
-		message.Timestamp = time.Now()
-
-		wsc.broadcastMessage(message)
+		ctx.Next()
 	}
 }
 
-func (wsc *WSConfig) handleLogout(username string) {
-	wsc.mutex.Lock()
-	defer wsc.mutex.Unlock()
-
-	for conn, user := range wsc.connections {
-		if user == username {
-			conn.Close()
-			delete(wsc.connections, conn)
-			break
-		}
-	}
-}
-
-func (wsc *WSConfig) broadcastMessage(message Message) {
-	wsc.mutex.Lock()
-	defer wsc.mutex.Unlock()
-
-	for conn, username := range wsc.connections {
-		// Sending the message only to the sender
-		if username != message.Sender {
-			continue
-		}
-
-		if err := conn.WriteJSON(message); err != nil {
-			log.Printf("Error broadcasting to %s: %v", username, err)
-			conn.Close()
-			delete(wsc.connections, conn)
-		}
-	}
-}
-
-func prepareAuthHandlers(router *gin.Engine, auth *authapi.AuthHandler, wsc *WSConfig) *gin.RouterGroup {
+func prepareAuthHandlers(router *gin.Engine, auth *authapi.AuthHandler) *gin.RouterGroup {
 	router.POST("/gamestop/api/auth/login", func(ctx *gin.Context) {
 		ctx.Header("Content-Type", "application/json")
 		auth.Login(ctx)
@@ -132,79 +45,52 @@ func prepareAuthHandlers(router *gin.Engine, auth *authapi.AuthHandler, wsc *WSC
 	})
 
 	router.POST("/gamestop/api/auth/logout", func(ctx *gin.Context) {
-		username, exists := ctx.Get("username")
+		_, err := auth.ValidateToken(ctx)
 
-		if !exists {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid token"})
+		if err != nil {
+			ctx.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid token"})
 			return
 		}
 
-		wsc.handleLogout(username.(string))
 		auth.Logout(ctx)
 	})
 
 	// Protected routes
-	protectedRoutes := router.Group("/gamestop/api/games", auth.AuthMiddleware())
+	protectedRoutes := router.Group("/gamestop/api/games", CORSMiddleware(), auth.AuthMiddleware())
 	return protectedRoutes
 }
 
-func prepareGameApiHandlers(router *gin.RouterGroup, gameH *gameapi.GamesHandler, wsc *WSConfig) {
-	router.GET("/gamestop/api/games", func(ctx *gin.Context) {
-		ctx.Header("Accept", "application/json")
+func prepareGameApiHandlers(router *gin.RouterGroup, gameH *gameapi.GamesHandler) {
+	router.GET("", func(ctx *gin.Context) {
+		ctx.Header("Content-type", "application/json")
 		gameH.GetGames(ctx)
 	})
-	router.GET("/gamestop/api/games/:id", func(ctx *gin.Context) {
+	router.GET(":id", func(ctx *gin.Context) {
 		ctx.Header("Accept", "application/json")
 
 		// Retrieving the ID from the URL
 		id := ctx.Param("id")
 
 		if id == "" {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "ID not provided"})
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "ID not provided"})
 			return
 		}
 
 		gameH.GetOneGame(ctx, id)
 	})
-	router.POST("/gamestop/api/games", func(ctx *gin.Context) {
+	router.POST("", func(ctx *gin.Context) {
 		ctx.Header("Content-Type", "application/json")
-		game := gameH.AddGame(ctx)
-		message := Message{
-			Type: "SAVE_GAME",
-			Data: game,
-		}
-		log.Printf("Message: %s", message)
-		wsc.broadcastMessage(message)
+		gameH.AddGame(ctx)
+
 	})
-	router.PUT("/gamestop/api/games", func(ctx *gin.Context) {
+	router.PUT("", func(ctx *gin.Context) {
 		ctx.Header("Content-Type", "application/json")
 		ctx.Header("Accept", "application/json")
-		game := gameH.EditGame(ctx)
-		message := Message{
-			Type: "UPDATE_GAME",
-			Data: game,
-		}
-		log.Printf("Message: %s", message)
-		wsc.broadcastMessage(message)
+		gameH.EditGame(ctx)
 	})
-	router.DELETE("/gamestop/api/games/:id", func(ctx *gin.Context) {
+	router.DELETE(":id", func(ctx *gin.Context) {
 		ctx.Header("Accept", "application/json")
-
-		// Retrieving the ID from the URL
-		id := ctx.Param("id")
-
-		if id == "" {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "ID not provided"})
-			return
-		}
-
-		deletedId := gameH.DeleteGame(ctx, id)
-		message := Message{
-			Type: "DELETE_GAME",
-			Data: deletedId,
-		}
-		log.Printf("Message: %s", message)
-		wsc.broadcastMessage(message)
+		gameH.DeleteGame(ctx)
 	})
 }
 
@@ -216,24 +102,19 @@ func prepareHandlers(router *gin.Engine, db *db.Client) {
 
 	auth := authapi.NewAuthHandler(db, secretKey)
 	gameH := gameapi.NewGamesHandler(db)
-	wsc := NewWSConfig(auth)
+	wsc := websockets.NewWSConfig(auth)
 
-	router.GET("/ws", wsc.handleWS)
-	protectedRoutes := prepareAuthHandlers(router, auth, wsc)
-	prepareGameApiHandlers(protectedRoutes, gameH, wsc)
+	router.GET("/ws", wsc.HandleWS)
+	protectedRoutes := prepareAuthHandlers(router, auth)
+	prepareGameApiHandlers(protectedRoutes, gameH)
 }
 
 func main() {
 	router := gin.Default()
 
 	// Enabling default CORS configuration
-	router.Use(cors.New(cors.Config{
-		AllowAllOrigins:  true,
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-	}))
+	// CORS middleware
+	router.Use(CORSMiddleware())
 
 	// Retrieving a new client connection
 	client, err := db.PrepareClient()
@@ -249,6 +130,10 @@ func main() {
 	prepareHandlers(router, client)
 
 	// Running the server
-	server := fmt.Sprintf("%s:%s", SERVER_HOST, SERVER_PORT)
-	router.Run(server)
+	server := fmt.Sprintf("%s:%s", ServerHost, ServerPort)
+	err = router.Run(server)
+
+	if err != nil {
+		log.Panicf("Error running the server: %s", err.Error())
+	}
 }
