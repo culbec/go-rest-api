@@ -1,6 +1,7 @@
 package gameapi
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -136,6 +137,8 @@ func (h *GamesHandler) EditGame(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
+
+	log.Printf("Received game: %v\n", game)
 
 	status, err := h.db.EditDocument("games", &bson.D{{Key: "_id", Value: game.ID}}, game)
 

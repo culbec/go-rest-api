@@ -4,6 +4,20 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+type Photo struct {
+	ID       primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
+	UserID   string             `json:"user_id" bson:"user_id"`
+	GameID   string             `json:"game_id" bson:"game_id"`
+	Filepath string             `json:"filepath" bson:"filepath"`
+	Data     string             `json:"data" bson:"data"`
+}
+
+// Location struct
+type Location struct {
+	Latitude  float64 `json:"latitude" bson:"latitude"`
+	Longitude float64 `json:"longitude" bson:"longitude"`
+}
+
 // Game Struct
 type Game struct {
 	ID          primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
@@ -13,6 +27,7 @@ type Game struct {
 	RentalPrice float64            `json:"rental_price" bson:"rental_price"`
 	Rating      int                `json:"rating" bson:"rating"`
 	Category    string             `json:"category" bson:"category"`
+	Location    Location           `json:"location" bson:"location"`
 	Date        string             `json:"date" bson:"date"`
 	Version     int                `json:"version" bson:"version"`
 }
@@ -48,7 +63,8 @@ type RegisterRequest struct {
 
 // AuthResponse Struct
 type AuthResponse struct {
-	Token string `json:"token"`
+	UserID string `json:"user_id"`
+	Token  string `json:"token"`
 }
 
 // MessageData Struct

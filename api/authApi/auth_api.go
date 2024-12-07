@@ -107,7 +107,7 @@ func (h *AuthHandler) Login(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(http.StatusOK, types.AuthResponse{Token: token})
+	ctx.JSON(http.StatusOK, types.AuthResponse{UserID: user[0].ID.Hex(), Token: token})
 }
 
 func (h *AuthHandler) Logout(ctx *gin.Context) {
@@ -177,5 +177,6 @@ func (h *AuthHandler) Register(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(http.StatusCreated, types.AuthResponse{Token: token})
+	userID := id.(string)
+	ctx.JSON(http.StatusCreated, types.AuthResponse{UserID: userID, Token: token})
 }

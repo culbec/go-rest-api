@@ -38,7 +38,7 @@ var upgrader = websocket.Upgrader{
 }
 
 func (wsc *WSConfig) StartSampleNotifications(ctx context.Context, conn *websocket.Conn, username string) {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 
 	for {

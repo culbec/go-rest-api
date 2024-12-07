@@ -10,11 +10,12 @@ import (
 
 	authapi "github.com/culbec/go-rest-api/api/authApi"
 	gameapi "github.com/culbec/go-rest-api/api/gameApi"
+	photoapi "github.com/culbec/go-rest-api/api/photoApi"
 	"github.com/culbec/go-rest-api/db"
 	"github.com/gin-gonic/gin"
 )
 
-const ServerHost = "localhost"
+const ServerHost = "127.0.0.1"
 const ServerPort = "3000"
 
 func CORSMiddleware() gin.HandlerFunc {
@@ -33,7 +34,7 @@ func CORSMiddleware() gin.HandlerFunc {
 	}
 }
 
-func prepareAuthHandlers(router *gin.Engine, auth *authapi.AuthHandler) *gin.RouterGroup {
+func prepareAuthHandlers(router *gin.Engine, auth *authapi.AuthHandler) []*gin.RouterGroup {
 	router.POST("/gamestop/api/auth/login", func(ctx *gin.Context) {
 		ctx.Header("Content-Type", "application/json")
 		auth.Login(ctx)
@@ -55,8 +56,23 @@ func prepareAuthHandlers(router *gin.Engine, auth *authapi.AuthHandler) *gin.Rou
 		auth.Logout(ctx)
 	})
 
+	router.POST("/gamestop/api/auth/validate", func(ctx *gin.Context) {
+		_, err := auth.ValidateToken(ctx)
+
+		if err != nil {
+			log.Println(err)
+			ctx.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid token"})
+			return
+		}
+
+		ctx.JSON(http.StatusOK, gin.H{"message": "Valid token"})
+	})
+
 	// Protected routes
-	protectedRoutes := router.Group("/gamestop/api/games", CORSMiddleware(), auth.AuthMiddleware())
+	protectedRoutes := []*gin.RouterGroup{
+		router.Group("/gamestop/api/games", CORSMiddleware(), auth.AuthMiddleware()),
+		router.Group("/gamestop/api/photos", CORSMiddleware(), auth.AuthMiddleware()),
+	}
 	return protectedRoutes
 }
 
@@ -94,6 +110,21 @@ func prepareGameApiHandlers(router *gin.RouterGroup, gameH *gameapi.GamesHandler
 	})
 }
 
+func preparePhotoApiHandlers(router *gin.RouterGroup, photoH *photoapi.PhotoHandler) {
+	router.GET("/:user_id", func(ctx *gin.Context) {
+		ctx.Header("Content-type", "application/json")
+		photoH.GetPhotosOfUser(ctx)
+	})
+	router.POST("", func(ctx *gin.Context) {
+		ctx.Header("Content-Type", "application/json")
+		photoH.AddPhoto(ctx)
+	})
+	router.DELETE("/:filepath", func(ctx *gin.Context) {
+		ctx.Header("Accept", "application/json")
+		photoH.DeletePhoto(ctx)
+	})
+}
+
 func prepareHandlers(router *gin.Engine, db *db.Client) {
 	secretKey := []byte(os.Getenv("JWT_SECRET_KEY"))
 	if len(secretKey) == 0 {
@@ -102,11 +133,13 @@ func prepareHandlers(router *gin.Engine, db *db.Client) {
 
 	auth := authapi.NewAuthHandler(db, secretKey)
 	gameH := gameapi.NewGamesHandler(db)
+	photoH := photoapi.NewPhotoHandler(db)
 	wsc := websockets.NewWSConfig(auth)
 
 	router.GET("/ws", wsc.HandleWS)
 	protectedRoutes := prepareAuthHandlers(router, auth)
-	prepareGameApiHandlers(protectedRoutes, gameH)
+	prepareGameApiHandlers(protectedRoutes[0], gameH)
+	preparePhotoApiHandlers(protectedRoutes[1], photoH)
 }
 
 func main() {
