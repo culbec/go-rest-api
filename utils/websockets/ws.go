@@ -1,5 +1,7 @@
 package websockets
 
+import "fmt"
+
 import (
 	"context"
 	"log"
@@ -41,6 +43,8 @@ func (wsc *WSConfig) StartSampleNotifications(ctx context.Context, conn *websock
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 
+	notificationId := 1
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -50,7 +54,7 @@ func (wsc *WSConfig) StartSampleNotifications(ctx context.Context, conn *websock
 			log.Printf("[WS] Sending notification to %s", username)
 			message := types.MessageData{
 				Type:    "notification",
-				Payload: "Hello " + username + ", this is a sample notification",
+				Payload: "Hello " + username + ", this is a sample notification no. " + fmt.Sprint(notificationId),
 				Sender:  "server",
 			}
 			if err := conn.WriteJSON(message); err != nil {
@@ -62,6 +66,7 @@ func (wsc *WSConfig) StartSampleNotifications(ctx context.Context, conn *websock
 				wsc.mutex.Unlock()
 				return
 			}
+			notificationId++
 		}
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/culbec/go-rest-api/utils/websockets"
+	"github.com/joho/godotenv"
 
 	authapi "github.com/culbec/go-rest-api/api/authApi"
 	gameapi "github.com/culbec/go-rest-api/api/gameApi"
@@ -143,6 +144,26 @@ func prepareHandlers(router *gin.Engine, db *db.Client) {
 }
 
 func main() {
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	serverHost := os.Getenv("SERVER_HOST")
+	serverPort := os.Getenv("SERVER_PORT")
+
+	if serverHost != "" {
+		log.Printf("Server host: %s", serverHost)
+	} else {
+		log.Printf("Server host not set, using default: %s", ServerHost)
+	}
+
+	if serverPort != "" {
+		log.Printf("Server port: %s", serverPort)
+	} else {
+		log.Printf("Server port not set, using default: %s", ServerPort)
+	}
+
 	router := gin.Default()
 
 	// Enabling default CORS configuration
@@ -163,7 +184,7 @@ func main() {
 	prepareHandlers(router, client)
 
 	// Running the server
-	server := fmt.Sprintf("%s:%s", ServerHost, ServerPort)
+	server := fmt.Sprintf("%s:%s", serverHost, serverPort)
 	err = router.Run(server)
 
 	if err != nil {
